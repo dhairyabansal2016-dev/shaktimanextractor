@@ -45,6 +45,9 @@ Welcome to the <b>Free Txt Extractor Bot</b> 📂
 /utkarsh    - Utkarsh
 /ak         - Apni Kaksha
 </pre>
+
+<b>If you face any kind of problem or error in extracting batch,
+Contact - @Tgballa.</b>
 """
 
 # Define the buttons for /start
