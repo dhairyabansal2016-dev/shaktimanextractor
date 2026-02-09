@@ -524,8 +524,7 @@ async def login(client, user_id, m, file_path, start_time, bname, batch_id, url_
         f"Video Links - {video_count - drm_video_count} \n"
         f"Total Pdf - {pdf_count} \n"
         f"**Extracted BY: {credit}** \n\n"
-        f"**[Ksi ko usa ka account chiye tho msg kr lo stock h new Msg here @Hidfgh] \n\n**"
-        f"**╾───• Txtx Extractor •───╼** uploader in cheap price @king_rajasthan_23_bot"
+        f"**╾───• Txtx Extractor •───╼**"
     )
     async with message_lock:
         try:
