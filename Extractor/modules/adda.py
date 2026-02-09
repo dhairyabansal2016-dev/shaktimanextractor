@@ -16,7 +16,7 @@ log_channel = CHANNEL_ID
 @app.on_message(filters.command(["adda"]))
 async def adda_command_handler(app, m):
     try:
-        e_message = await app.ask(m.chat.id, "Send ID & Password of **Adda 247** in given format or just send token.\n\n**Format**:- Email ID*Password")
+        e_message = await app.ask(m.chat.id, "Send ID & Password of **Adda 247** in given format.\n\n**Format**:- Email ID*Password")
         ap = e_message.text.strip()
         if "*" in ap:
             e, p = ap.split("*")
